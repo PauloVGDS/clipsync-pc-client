@@ -116,8 +116,23 @@ async def run_session(device: BLEDevice) -> None:
 
 
 async def find_device(timeout: float = 10.0) -> Optional[BLEDevice]:
-    log(f"[ble] procurando '{DEVICE_NAME}' por {timeout:.0f}s...")
-    return await BleakScanner.find_device_by_name(DEVICE_NAME, timeout=timeout)
+    # Procurar por SERVICE UUID e nao por nome - o nome pode nao caber no
+    # adv packet (max 31 bytes) dependendo da config do firmware NimBLE.
+    # O service UUID e sempre anunciado.
+    log(f"[ble] procurando service {SERVICE_UUID} por {timeout:.0f}s...")
+
+    target = SERVICE_UUID.lower()
+
+    def match_by_service(_dev: BLEDevice, adv) -> bool:
+        for u in (adv.service_uuids or []):
+            if u.lower() == target:
+                return True
+        # Fallback: tenta tambem pelo nome, caso esteja exposto.
+        if (adv.local_name or _dev.name or "") == DEVICE_NAME:
+            return True
+        return False
+
+    return await BleakScanner.find_device_by_filter(match_by_service, timeout=timeout)
 
 
 async def main_loop() -> None:
